@@ -10,18 +10,15 @@ from selenium.webdriver.common.action_chains import ActionChains
 import logging
 import re
 
-# Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class OdishaRERAScraper:
     def __init__(self, headless=False):
-        """Initialize the scraper with Chrome WebDriver"""
         self.setup_driver(headless)
         self.projects_data = []
         
     def setup_driver(self, headless=False):
-        """Set up Chrome WebDriver with appropriate options"""
         chrome_options = Options()
         if headless:
             chrome_options.add_argument("--headless")
@@ -39,12 +36,10 @@ class OdishaRERAScraper:
         self.wait = WebDriverWait(self.driver, 20)
         
     def navigate_to_projects_page(self):
-        """Navigate to the RERA projects list page"""
         try:
             logger.info("Navigating to RERA projects page...")
             self.driver.get("https://rera.odisha.gov.in/projects/project-list")
             
-            # Wait for the projects to load
             self.wait.until(EC.presence_of_element_located((By.XPATH, "//button[contains(text(), 'View Details')] | //a[contains(text(), 'View Details')]")))
             time.sleep(5)
             logger.info("Successfully loaded projects page")
@@ -54,12 +49,9 @@ class OdishaRERAScraper:
             raise
     
     def find_all_view_details_buttons(self):
-        """Find all View Details buttons on the page"""
         try:
-            # Wait for page to fully load and scroll to load all projects
             time.sleep(3)
             
-            # Scroll to load all content
             last_height = self.driver.execute_script("return document.body.scrollHeight")
             for i in range(3):
                 self.driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
@@ -69,11 +61,9 @@ class OdishaRERAScraper:
                     break
                 last_height = new_height
             
-            # Scroll back to top
             self.driver.execute_script("window.scrollTo(0, 0);")
             time.sleep(2)
             
-            # Find View Details buttons
             buttons = []
             selectors = [
                 "//button[contains(text(), 'View Details')]",
@@ -90,21 +80,18 @@ class OdishaRERAScraper:
                     continue
             
             logger.info(f"Found {len(buttons)} View Details buttons")
-            return buttons[:6]  # Return first 6 buttons
+            return buttons[:6]
             
         except Exception as e:
             logger.error(f"Error finding View Details buttons: {e}")
             return []
     
     def extract_project_overview_data(self):
-        """Extract basic project data from the overview page"""
         project_data = {}
         
         try:
-            # Wait for page to load completely
             time.sleep(5)
             
-            # Extract RERA Registration Number (both RP/ and PS/ formats)
             rera_selectors = [
                 "//*[contains(text(), 'RP/') or contains(text(), 'PS/')]",
                 "//*[contains(text(), 'RERA Regd')]//following-sibling::*//*[contains(text(), 'RP/') or contains(text(), 'PS/')]",
@@ -120,7 +107,6 @@ class OdishaRERAScraper:
                     for element in elements:
                         text = element.text.strip()
                         if text and ('RP/' in text or 'PS/' in text):
-                            # Updated regex to handle both RP/ and PS/ formats
                             rera_pattern = r'(RP|PS)/\d{1,2}/\d{4}/\d{4,6}'
                             rera_match = re.search(rera_pattern, text)
                             if rera_match:
@@ -133,22 +119,16 @@ class OdishaRERAScraper:
                     logger.debug(f"RERA selector failed: {e}")
                     continue
             
-            # Extract Project Name - more comprehensive approach
-            # First try to get the actual project name from the page structure
             name_selectors = [
-                # Look for project name in structured data
                 "//*[contains(text(), 'Project Name')]//following-sibling::*[1]",
                 "//*[contains(text(), 'Project Name')]//parent::*//following-sibling::*[1]",
                 "//*[contains(text(), 'Project Name')]//following::text()[normalize-space()][1]",
-                # Look for main headings that aren't generic
                 "//h1[not(contains(text(), 'Details')) and not(contains(text(), 'Overview')) and not(contains(text(), 'Project')) and string-length(normalize-space()) > 3]",
                 "//h2[not(contains(text(), 'Details')) and not(contains(text(), 'Overview')) and not(contains(text(), 'Project')) and string-length(normalize-space()) > 3]",
                 "//h3[not(contains(text(), 'Details')) and not(contains(text(), 'Overview')) and not(contains(text(), 'Project')) and string-length(normalize-space()) > 3]",
-                # Look in card titles or project containers
                 "//*[contains(@class, 'card-title')][not(contains(text(), 'Details'))][not(contains(text(), 'Overview'))]",
                 "//*[contains(@class, 'project-title')]",
                 "//*[contains(@class, 'project-name')]",
-                # Look for emphasized text that might be project name
                 "//strong[not(contains(text(), 'Details')) and not(contains(text(), 'Overview')) and string-length(normalize-space()) > 5]",
                 "//b[not(contains(text(), 'Details')) and not(contains(text(), 'Overview')) and string-length(normalize-space()) > 5]"
             ]
@@ -158,7 +138,6 @@ class OdishaRERAScraper:
                     elements = self.driver.find_elements(By.XPATH, selector)
                     for element in elements:
                         text = element.text.strip()
-                        # Filter out unwanted text
                         if (text and len(text) > 3 and 
                             'Details' not in text and 
                             'Overview' not in text and 
@@ -175,14 +154,11 @@ class OdishaRERAScraper:
                     logger.debug(f"Name selector failed: {e}")
                     continue
             
-            # If still no project name found, try alternative methods
             if 'Project_Name' not in project_data:
                 try:
-                    # Look for any text that appears to be a project name near RERA number
                     if 'RERA_Regd_No' in project_data:
                         rera_elements = self.driver.find_elements(By.XPATH, f"//*[contains(text(), '{project_data['RERA_Regd_No']}')]")
                         for rera_elem in rera_elements:
-                            # Look for nearby text that might be project name
                             parent = rera_elem.find_element(By.XPATH, "./..")
                             siblings = parent.find_elements(By.XPATH, "./*")
                             for sibling in siblings:
@@ -200,7 +176,6 @@ class OdishaRERAScraper:
                 except Exception as e:
                     logger.debug(f"Alternative name search failed: {e}")
             
-            # Last resort - check page title
             if 'Project_Name' not in project_data:
                 try:
                     page_title = self.driver.title
@@ -226,9 +201,7 @@ class OdishaRERAScraper:
             return project_data
     
     def click_promoter_tab(self):
-        """Click on Promoter Details tab with improved reliability"""
         try:
-            # Multiple ways to find and click the promoter tab
             tab_selectors = [
                 "//a[contains(text(), 'Promoter Details')]",
                 "//button[contains(text(), 'Promoter Details')]",
@@ -245,7 +218,6 @@ class OdishaRERAScraper:
                     tab_elements = self.driver.find_elements(By.XPATH, selector)
                     for tab_element in tab_elements:
                         if tab_element.is_displayed():
-                            # Try different click methods
                             try:
                                 self.wait.until(EC.element_to_be_clickable(tab_element))
                                 tab_element.click()
@@ -267,19 +239,15 @@ class OdishaRERAScraper:
             return False
     
     def extract_promoter_details(self):
-        """Extract promoter details from the Promoter Details tab"""
         promoter_data = {}
         
         try:
-            # Click on Promoter Details tab
             if not self.click_promoter_tab():
                 logger.warning("Could not access promoter details tab")
                 return promoter_data
             
-            # Wait for content to load
             time.sleep(4)
             
-            # Extract Company Name with comprehensive selectors
             company_selectors = [
                 "//*[contains(text(), 'Company Name')]//following-sibling::*[1]",
                 "//*[contains(text(), 'Company Name')]//following-sibling::*/text()[normalize-space()][1]",
@@ -300,7 +268,6 @@ class OdishaRERAScraper:
                     for element in elements:
                         text = element.text.strip()
                         if text and len(text) > 5:
-                            # Check if it looks like a company name
                             company_keywords = ['M/S', 'PVT', 'LTD', 'PRIVATE', 'DEVELOPERS', 'BUILDERS', 'CONSTRUCTION', 'INFRA']
                             if any(keyword in text.upper() for keyword in company_keywords):
                                 promoter_data['Promoter_Name'] = text
@@ -312,7 +279,6 @@ class OdishaRERAScraper:
                     logger.debug(f"Company selector failed: {e}")
                     continue
             
-            # Extract Registered Office Address
             address_selectors = [
                 "//*[contains(text(), 'Registered Office Address')]//following-sibling::*[1]",
                 "//*[contains(text(), 'Registered Office Address')]//following-sibling::*/text()[normalize-space()][1]",
@@ -330,7 +296,6 @@ class OdishaRERAScraper:
                     for element in elements:
                         text = element.text.strip()
                         if text and len(text) > 15:
-                            # Check if it looks like an address
                             address_keywords = ['PO-', 'PIN', 'Dist', 'Odisha', 'Plot', 'Road', 'Street']
                             if any(keyword in text for keyword in address_keywords):
                                 promoter_data['Promoter_Address'] = text
@@ -342,13 +307,11 @@ class OdishaRERAScraper:
                     logger.debug(f"Address selector failed: {e}")
                     continue
             
-            # Extract GST Number
             gst_selectors = [
                 "//*[contains(text(), 'GST No')]//following-sibling::*[1]",
                 "//*[contains(text(), 'GST No')]//following-sibling::*/text()[normalize-space()][1]",
                 "//*[contains(text(), 'GST No')]//parent::*//following-sibling::*[1]",
                 "//*[contains(text(), 'GST')]//following-sibling::*[1]",
-                # Look for 15-character alphanumeric strings that look like GST numbers
                 "//*[text()[matches(., '^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}[Z]{1}[0-9A-Z]{1}$')]]",
                 "//span[string-length(normalize-space(text())) = 15 and contains(text(), 'A')]",
                 "//div[string-length(normalize-space(text())) = 15 and contains(text(), 'A')]",
@@ -361,7 +324,6 @@ class OdishaRERAScraper:
                     for element in elements:
                         text = element.text.strip()
                         if text and len(text) >= 10:
-                            # Clean and validate GST format
                             gst_clean = re.sub(r'[^A-Z0-9]', '', text.upper())
                             if len(gst_clean) == 15 and gst_clean[2:7].isalpha() and gst_clean[:2].isdigit():
                                 promoter_data['GST_No'] = gst_clean
@@ -385,12 +347,9 @@ class OdishaRERAScraper:
             return promoter_data
     
     def scrape_project_details(self, button_index):
-        """Scrape details for a single project using button index"""
         try:
-            # Navigate back to main page
             self.navigate_to_projects_page()
             
-            # Find all buttons again (they get stale after navigation)
             view_details_buttons = self.find_all_view_details_buttons()
             
             if button_index >= len(view_details_buttons):
@@ -399,30 +358,23 @@ class OdishaRERAScraper:
             
             button = view_details_buttons[button_index]
             
-            # Scroll to the button and ensure it's clickable
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
             time.sleep(2)
             
-            # Click the button
             try:
                 self.wait.until(EC.element_to_be_clickable(button))
                 button.click()
             except:
                 self.driver.execute_script("arguments[0].click();", button)
             
-            # Wait for the detail page to load
             time.sleep(6)
             
-            # Extract project overview data
             project_data = self.extract_project_overview_data()
             
-            # Extract promoter details
             promoter_data = self.extract_promoter_details()
             
-            # Combine all data
             complete_data = {**project_data, **promoter_data}
             
-            # Ensure all required fields are present (even if empty)
             required_fields = ['RERA_Regd_No', 'Project_Name', 'Promoter_Name', 'Promoter_Address', 'GST_No']
             for field in required_fields:
                 if field not in complete_data:
@@ -436,11 +388,9 @@ class OdishaRERAScraper:
             return None
     
     def scrape_all_projects(self):
-        """Main method to scrape all project data"""
         try:
             self.navigate_to_projects_page()
             
-            # Find all View Details buttons first
             view_details_buttons = self.find_all_view_details_buttons()
             
             if not view_details_buttons:
@@ -449,7 +399,6 @@ class OdishaRERAScraper:
             
             logger.info(f"Found {len(view_details_buttons)} projects to scrape")
             
-            # Scrape each project by index
             for i in range(min(6, len(view_details_buttons))):
                 logger.info(f"Scraping project {i + 1}/6...")
                 
@@ -460,7 +409,6 @@ class OdishaRERAScraper:
                     logger.info(f"Successfully scraped project {i + 1}")
                 else:
                     logger.warning(f"Failed to scrape project {i + 1}")
-                    # Add empty record to maintain count
                     empty_data = {
                         'RERA_Regd_No': '',
                         'Project_Name': '',
@@ -470,7 +418,6 @@ class OdishaRERAScraper:
                     }
                     self.projects_data.append(empty_data)
                 
-                # Add delay between requests
                 time.sleep(3)
             
             logger.info(f"Completed scraping {len(self.projects_data)} projects")
@@ -479,10 +426,8 @@ class OdishaRERAScraper:
             logger.error(f"Error in main scraping process: {e}")
     
     def save_to_csv(self, filename="odisha_rera_projects.csv"):
-        """Save scraped data to CSV file"""
         if self.projects_data:
             df = pd.DataFrame(self.projects_data)
-            # Reorder columns
             column_order = ['RERA_Regd_No', 'Project_Name', 'Promoter_Name', 'Promoter_Address', 'GST_No']
             df = df.reindex(columns=column_order)
             df.to_csv(filename, index=False)
@@ -495,7 +440,6 @@ class OdishaRERAScraper:
             return None
     
     def display_data(self):
-        """Display scraped data"""
         if self.projects_data:
             df = pd.DataFrame(self.projects_data)
             print("\n" + "="*100)
@@ -517,28 +461,22 @@ class OdishaRERAScraper:
             return None
     
     def close(self):
-        """Close the webdriver"""
         if hasattr(self, 'driver'):
             self.driver.quit()
             logger.info("WebDriver closed")
 
 def main():
-    """Main function to run the scraper"""
     scraper = None
     try:
         print("Starting Odisha RERA Projects Scraper...")
         print("This will scrape the first 6 projects from the RERA website.")
         
-        # Initialize scraper (set headless=True to run without browser window)
         scraper = OdishaRERAScraper(headless=False)
         
-        # Scrape all projects
         scraper.scrape_all_projects()
         
-        # Display results
         df = scraper.display_data()
         
-        # Save to CSV
         scraper.save_to_csv()
         
         print("\nScraping completed successfully!")
